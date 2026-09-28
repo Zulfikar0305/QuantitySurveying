@@ -1,3 +1,1 @@
-"""
-Tests package for Quantity Surveying application.
-"""
+# Tests package for Quantity Surveying application
