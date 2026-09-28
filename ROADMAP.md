@@ -15,9 +15,21 @@
 - Automated tests
 
 ## Phase 3: Measurement
-- Length calculations
-- Area calculations
-- Perimeter calculations
+### Phase 3 - Task 1: Measurement Foundation (COMPLETED)
+- Scale/calibration domain models
+- Explicit unit handling (mm, cm, m)
+- Deterministic point-to-point distance
+- Deterministic polyline length
+- Deterministic polygon area (shoelace formula)
+- Deterministic polygon perimeter
+- Measurement result/traceability models
+- Comprehensive unit tests
+- Full architecture documentation
+
+### Phase 3 - Task 2: (Next)
+- Snapping
+- Dimension Interpretation
+- Verification
 
 ## Phase 4: Advanced Features
 - Snapping

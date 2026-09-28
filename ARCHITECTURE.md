@@ -34,19 +34,60 @@ Features:
 - Preserves PDF-native coordinates (not converted to pixels)
 - Isolates PyMuPDF implementation details
 
-### 2. Geometry Engine
+### 2. Measurement (src/modules/measurement/)
 
-Handles geometric operations and calculations.
+Handles geometric measurements with explicit scale calibration.
 
-### 3. UI Layer
+Key components:
+- calibration.py: Calibration model with scale factors and unit conversion
+- measurement_models.py: Measurement result and traceability models
+- measurement_engine.py: Measurement operations (distance, polyline, polygon)
+- __init__.py: Module exports
+
+Features:
+- Explicit scale calibration from known reference measurements
+- No implicit scale assumptions (e.g., no hardcoded 1:100)
+- Deterministic geometric calculations (Euclidean distance, shoelace formula)
+- Full traceability: every measurement includes source information
+- Support for multiple real-world units (mm, cm, m)
+
+Architecture flow:
+```
+PDF geometry (Point, Polyline, Polygon)
+    ↓
+MeasurementEngine with Calibration
+    ↓
+PDF-space measurement (points or points²)
+    ↓
+Unit conversion via Calibration
+    ↓
+Real-world measurement with traceability
+```
+
+Key principles:
+- PDF measurements use the coordinate system from pdf_processing module
+- Real-world units are explicit and must be specified via Calibration
+- Area conversions use squared calibration factor
+- All calculations are deterministic and reproducible
+- Measurement results preserve source page, geometry, and calculation method
+
+### 3. Measurement Error Handling
+
+Custom exceptions for measurement domain:
+- ValueError for invalid calibration parameters (non-positive distances)
+- ValueError for invalid polygon vertices (< 3 points)
+- ValueError for invalid polyline points (< 2 points)
+- ValueError for negative distances or areas
+
+### 4. UI Layer
 
 User interface components.
 
-### 4. Persistence
+### 5. Persistence
 
 Data storage and retrieval.
 
-### 5. Testing Framework
+### 6. Testing Framework
 
 Automated tests for all components.
 
