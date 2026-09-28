@@ -1,4 +1,4 @@
-# Development Roadmap
+﻿# Development Roadmap
 
 ## Phase 1: Foundation
 - Basic UI
@@ -26,7 +26,22 @@
 - Comprehensive unit tests
 - Full architecture documentation
 
-### Phase 3 - Task 2: (Next)
+### Phase 3 - Task 2: PDF Viewer and Coordinate Mapping Foundation (COMPLETED)
+- PDF viewer module (src/modules/viewer/)
+- PDF rendering module (PyMuPDF-based rendering)
+- Viewport model (zoom, pan, rotation state)
+- Coordinate mapper (bidirectional coordinate transformation)
+- PDF Viewer widget (PySide6-based UI)
+- Page navigation (first, previous, next, last)
+- Zoom controls (in, out, reset, fit-to-page)
+- Pan/scroll functionality
+- Coordinate mapping API (page_to_screen, screen_to_page)
+- Page rotation handling (0, 90, 180, 270 degrees)
+- Error handling and validation
+- Comprehensive unit tests (28 new tests)
+- Architecture documentation updates
+
+### Phase 3 - Task 3: (Next)
 - Snapping
 - Dimension Interpretation
 - Verification

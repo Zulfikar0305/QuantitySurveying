@@ -71,25 +71,59 @@ Key principles:
 - All calculations are deterministic and reproducible
 - Measurement results preserve source page, geometry, and calculation method
 
-### 3. Measurement Error Handling
+### 3. PDF Viewer (src/modules/viewer/)
 
-Custom exceptions for measurement domain:
-- ValueError for invalid calibration parameters (non-positive distances)
-- ValueError for invalid polygon vertices (< 3 points)
-- ValueError for invalid polyline points (< 2 points)
-- ValueError for negative distances or areas
+Handles PDF page rendering and coordinate mapping.
 
-### 4. UI Layer
+Key components:
+- viewport.py: Viewport state model (zoom, pan, rotation, dimensions)
+- coordinate_mapper.py: Bidirectional coordinate transformation
+- rendering.py: PDF rendering to images using PyMuPDF
+- pdf_viewer.py: PySide6 viewer widget
+- __init__.py: Module exports
 
-User interface components.
+Features:
+- Open and display PDF files
+- Page navigation (first, previous, next, last)
+- Zoom controls (in, out, reset, fit-to-page)
+- Pan/scroll
+- Coordinate mapping between page and screen spaces
+- Page rotation handling
 
-### 5. Persistence
+Architecture flow:
+```
+PDF Document (loaded once)
+    ↓
+PDFRenderer (render pages to images)
+    ↓
+Viewport (track zoom, pan, rotation state)
+    ↓
+CoordinateMapper (transform coordinates bidirectionally)
+    ↓
+PDFViewer Widget (UI with PySide6)
+```
 
-Data storage and retrieval.
+Coordinate System Handling:
+- **PDF page coordinates**: MuPDF coordinate system (top-left origin, X right, Y down, in points)
+- **Screen coordinates**: Widget/pixel coordinates (top-left origin, X right, Y down)
+- Both systems use top-left/downward orientation, so no coordinate flipping is needed
+- Zoom and translation are applied by the viewport
+- Rotation is handled by swapping page dimensions conceptually
 
-### 6. Testing Framework
+Key principles:
+- Rendered images are visualization only, underlying geometry remains authoritative
+- Coordinate mapping is reversible (round-trip accuracy)
+- Viewport state is explicit and testable
+- Rotation handling is deterministic
 
-Automated tests for all components.
+### 4. Measurement (continued)
+
+Error handling for PDF processing:
+- PdfProcessingError: Base exception class
+- FileNotFoundError: PDF file not found
+- InvalidPdfError: File is not a valid PDF
+- EmptyPdfError: PDF has no pages
+- PermissionError: Access denied to file
 
 ## PDF Coordinate System
 
