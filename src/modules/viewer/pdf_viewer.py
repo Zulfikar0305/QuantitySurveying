@@ -29,6 +29,8 @@ from .viewport import Viewport
 from .coordinate_mapper import CoordinateMapper
 from .rendering import PDFRenderer, RenderError, InvalidPageError, RenderedImage
 
+from ..pdf_processing.geometry_models import Point
+
 
 class ViewerError(Exception):
     """Base exception for viewer errors."""
@@ -74,6 +76,7 @@ class PDFViewer(QWidget):
         self._renderer = PDFRenderer()
         self._viewport: Optional[Viewport] = None
         self._mapper: Optional[CoordinateMapper] = None
+        self._measurement_overlay = None
         
         self._setup_ui()
         self._apply_styles()
@@ -618,7 +621,113 @@ class PDFViewer(QWidget):
         zoom = value / 100.0
         self.zoom_to(zoom)
     
-    # Coordinate mapping helper methods
+    # Measurement methods
+    
+    def set_page_geometry(self, page_geometry):
+        """Set the page geometry for snapping."""
+        self._current_page_geometry = page_geometry
+    
+    def activate_distance_tool(self):
+        """Activate the distance measurement tool."""
+        if self._mapper is None or self._doc is None:
+            return
+        
+        # Create measurement engine with optional calibration
+        from ..measurement import MeasurementEngine
+        
+        # No hardcoded calibration - measurements will be in PDF points (uncalibrated)
+        engine = MeasurementEngine(calibration=None)
+        
+        self._measurement_tool = DistanceTool(
+            coordinate_mapper=self._mapper,
+            measurement_engine=engine
+        )
+        
+        # Get geometry for snapping
+        if self._current_page_geometry:
+            vector_elements = self._current_page_geometry.vector_elements
+            polyline_elements = self._current_page_geometry.get_polylines()
+            self._measurement_tool.set_geometry(vector_elements, polyline_elements)
+        
+        self._measurement_overlay = MeasurementOverlay(self._mapper)
+    
+    def deactivate_measurement_tool(self):
+        """Deactivate the measurement tool."""
+        self._measurement_tool = None
+        self._measurement_overlay = None
+    
+    def is_measurement_active(self) -> bool:
+        """Check if measurement tool is active."""
+        return self._measurement_tool is not None
+    
+    def get_measurement_state(self) -> Optional[str]:
+        """Get current measurement state."""
+        if self._measurement_tool is None:
+            return None
+        return self._measurement_tool.interaction.state.value
+    
+    def cancel_measurement(self):
+        """Cancel current measurement."""
+        if self._measurement_tool:
+            self._measurement_tool.cancel()
+        if self._measurement_overlay:
+            self._measurement_overlay.clear()
+    
+    def get_measurement_overlays(self):
+        """Get the current measurement overlay."""
+        return self._measurement_overlay
+    
+    def get_last_measurement_result(self):
+        """Get the last completed measurement result."""
+        if self._measurement_tool and self._measurement_tool.interaction.state == MeasurementState.COMPLETED:
+            return getattr(self._measurement_tool.interaction, "_last_result", None)
+        return None
+    
+        # Mouse event handlers
+    
+    def mousePressEvent(self, event):
+        """Handle mouse press events for measurement."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            if self._measurement_tool:
+                screen_x = event.position().x()
+                screen_y = event.position().y()
+                
+                # Get result if measurement completed
+                result = self._measurement_tool.handle_click(screen_x, screen_y)
+                
+                if result:
+                    # Store last result for retrieval
+                    self._measurement_tool.interaction._last_result = result
+                    
+                    # Update overlay
+                    if self._measurement_overlay:
+                        start_point = self._measurement_tool.interaction.start_point
+                        # We need to track the end point
+                        # For now, just clear and show the completed measurement
+                        self._measurement_overlay.clear()
+                
+                # Trigger repaint to show overlays
+                self.update()
+        
+        super().mousePressEvent(event)
+    
+    def mouseMoveEvent(self, event):
+        """Handle mouse move events for hover effects."""
+        if self._measurement_tool and self._measurement_tool.interaction.state == MeasurementState.WAITING_FOR_END:
+            # Preview mode - store current mouse position for preview line
+            pass
+        super().mouseMoveEvent(event)
+    
+    def keyPressEvent(self, event):
+        """Handle key press events for canceling measurements."""
+        if event.key() == Qt.Key.Key_Escape:
+            if self._measurement_tool and self._measurement_tool.interaction.state != MeasurementState.IDLE:
+                self.cancel_measurement()
+                event.accept()
+                return
+        super().keyPressEvent(event)
+    
+        # Coordinate mapping helper methods
     
     def page_to_screen(self, page_x: float, page_y: float) -> Tuple[float, float]:
         """
@@ -683,3 +792,50 @@ class PDFViewer(QWidget):
         if self._mapper is None:
             raise ViewerStateError("No PDF loaded - coordinate mapper not available")
         return self._mapper.screen_rect_to_page(x0, y0, x1, y1)
+    
+    def paintEvent(self, event):
+        """Paint event handler to draw measurement overlays."""
+        super().paintEvent(event)
+        
+        if not self._measurement_overlay:
+            return
+        
+        # Get screen overlays
+        screen_overlays = self._measurement_overlay.get_screen_overlays()
+        
+        if not screen_overlays:
+            return
+        
+        # Create a painter to draw on the image label
+        from PySide6.QtGui import QPainter, QPen, QBrush, QColor
+        from PySide6.QtCore import Qt
+        
+        pixmap = self._image_label.pixmap()
+        if pixmap is None:
+            return
+        
+        # Create a copy of the pixmap for drawing
+        painter = QPainter(pixmap)
+        
+        # Draw overlays
+        for overlay in screen_overlays:
+            if overlay["type"] == "point":
+                painter.setPen(QPen(QColor(overlay["color"]), overlay["line_width"]))
+                painter.setBrush(QBrush(QColor(overlay["color"]), Qt.BrushStyle.SolidPattern))
+                
+                radius = overlay["radius"]
+                x = overlay["x"] - radius
+                y = overlay["y"] - radius
+                painter.drawEllipse(int(x), int(y), int(radius * 2), int(radius * 2))
+            
+            elif overlay["type"] == "line":
+                painter.setPen(QPen(QColor(overlay["color"]), overlay["line_width"]))
+                painter.drawLine(
+                    int(overlay["x1"]), int(overlay["y1"]),
+                    int(overlay["x2"]), int(overlay["y2"])
+                )
+        
+        painter.end()
+        
+        # Update the image label with the modified pixmap
+        self._image_label.setPixmap(pixmap)

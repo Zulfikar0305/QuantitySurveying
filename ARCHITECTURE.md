@@ -42,6 +42,9 @@ Key components:
 - calibration.py: Calibration model with scale factors and unit conversion
 - measurement_models.py: Measurement result and traceability models
 - measurement_engine.py: Measurement operations (distance, polyline, polygon)
+- interaction.py: Interactive measurement workflow and state machine
+- snapping.py: Deterministic snapping to PDF geometry
+- overlays.py: Visual overlay rendering
 - __init__.py: Module exports
 
 Features:
@@ -50,6 +53,39 @@ Features:
 - Deterministic geometric calculations (Euclidean distance, shoelace formula)
 - Full traceability: every measurement includes source information
 - Support for multiple real-world units (mm, cm, m)
+- Interactive point-to-point distance measurement
+- Screen-to-page coordinate mapping
+- Deterministic snapping to line endpoints and polyline vertices
+- Page-specific measurements
+
+Architecture flow:
+```
+User click (screen coordinates)
+    ?
+CoordinateMapper.screen_to_page()
+    ?
+Page coordinates (MuPDF system)
+    ?
+Deterministic Snapping (if enabled)
+    ?
+MeasurementEngine with Calibration
+    ?
+PDF-space measurement (points)
+    ?
+Unit conversion via Calibration
+    ?
+Real-world measurement with traceability
+```
+
+Interactive Measurement Workflow:
+1. User activates Distance tool
+2. Viewer enters measurement mode
+3. User clicks Point A - screen coordinates ? page coordinates ? snap
+4. User clicks Point B - screen coordinates ? page coordinates ? snap
+5. MeasurementEngine calculates PDF-space distance
+6. Calibration converts to real-world units
+7. Overlay displays measurement on PDF
+8. MeasurementResult created with full traceability
 
 Architecture flow:
 ```
@@ -72,6 +108,35 @@ Key principles:
 - Measurement results preserve source page, geometry, and calculation method
 
 ### 3. PDF Viewer (src/modules/viewer/)
+
+Handles PDF page rendering and coordinate mapping.
+
+Key components:
+- viewport.py: Viewport state model (zoom, pan, rotation, dimensions)
+- coordinate_mapper.py: Bidirectional coordinate transformation
+- rendering.py: PDF rendering to images using PyMuPDF
+- pdf_viewer.py: PySide6 viewer widget with measurement support
+- __init__.py: Module exports
+
+Features:
+- Open and display PDF files
+- Page navigation (first, previous, next, last)
+- Zoom controls (in, out, reset, fit-to-page)
+- Pan/scroll
+- Coordinate mapping between page and screen spaces
+- Page rotation handling
+- Interactive distance measurement tool
+- Measurement overlay rendering
+- Page-specific measurements
+
+Measurement Integration in PDF Viewer:
+- activate_distance_tool(): Enables measurement mode
+- handle_click(): Processes clicks for point selection
+- cancel_measurement(): Cancels active measurement
+- get_measurement_overlays(): Retrieves visual overlays
+- set_page_geometry(): Provides geometry for snapping
+
+### 4. Measurement (continued)
 
 Handles PDF page rendering and coordinate mapping.
 

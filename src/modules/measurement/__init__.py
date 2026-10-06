@@ -8,6 +8,23 @@ from .measurement_models import (
 )
 from .measurement_engine import MeasurementEngine
 
+# New interactive measurement modules
+from .interaction import (
+    MeasurementState,
+    SnappedPoint,
+    MeasurementInteraction,
+    DistanceTool,
+)
+from .snapping import (
+    SnapResult,
+    SnappingSystem,
+)
+from .overlays import (
+    OverlayType,
+    OverlayItem,
+    MeasurementOverlay,
+)
+
 __all__ = [
     "Calibration",
     "Unit",
@@ -16,4 +33,13 @@ __all__ = [
     "MeasurementResult",
     "TraceabilityInfo",
     "MeasurementEngine",
+    "MeasurementState",
+    "SnappedPoint",
+    "MeasurementInteraction",
+    "DistanceTool",
+    "SnapResult",
+    "SnappingSystem",
+    "OverlayType",
+    "OverlayItem",
+    "MeasurementOverlay",
 ]

@@ -102,14 +102,14 @@ class MeasurementResult:
     pdf_value: float
     """The raw measurement in PDF points (or points² for areas)."""
     
-    calibration: Calibration
-    """The calibration used for unit conversion."""
+    calibration: Optional[Calibration]
+    """The calibration used for unit conversion (None for uncalibrated measurements)."""
     
-    unit: Unit
-    """The unit of the real-world value."""
+    unit: Optional[Unit]
+    """The unit of the real-world value (None for uncalibrated measurements)."""
     
-    real_world_value: float
-    """The measurement converted to real-world units."""
+    real_world_value: Optional[float]
+    """The measurement converted to real-world units (None for uncalibrated measurements)."""
     
     traceability: TraceabilityInfo
     """Information for tracing the measurement back to its source."""
@@ -118,9 +118,9 @@ class MeasurementResult:
     """Optional unique identifier for the measurement."""
     
     status: str = "valid"
-    """Status of the measurement (e.g., 'valid', 'verified', 'estimated')."""
+    """Status of the measurement (e.g., 'valid', 'verified', 'estimated', 'uncalibrated')."""
     
-    def real_world_in(self, target_unit: Unit) -> float:
+    def real_world_in(self, target_unit: Unit) -> Optional[float]:
         """
         Convert the real-world value to a different unit.
         
@@ -128,13 +128,16 @@ class MeasurementResult:
             target_unit: The target unit for conversion
             
         Returns:
-            The value converted to the target unit
+            The value converted to the target unit, or None if uncalibrated
             
         Example:
             >>> result = MeasurementResult(...)
             >>> result.real_world_in(Unit.METRES)
             5.0
         """
+        if self.unit is None or self.real_world_value is None:
+            return None
+            
         if target_unit == self.unit:
             return self.real_world_value
         
@@ -151,16 +154,24 @@ class MeasurementResult:
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary representation."""
-        return {
-            "measurement_type": self.measurement_type.value,
-            "pdf_value": self.pdf_value,
-            "calibration": {
+        calibration_dict = None
+        if self.calibration is not None:
+            calibration_dict = {
                 "pdf_reference_distance": self.calibration.pdf_reference_distance,
                 "real_world_reference_distance": self.calibration.real_world_reference_distance,
                 "unit": self.calibration.unit.value,
                 "units_per_pdf_point": self.calibration.units_per_pdf_point,
-            },
-            "unit": self.unit.value,
+            }
+        
+        unit_value = None
+        if self.unit is not None:
+            unit_value = self.unit.value
+            
+        return {
+            "measurement_type": self.measurement_type.value,
+            "pdf_value": self.pdf_value,
+            "calibration": calibration_dict,
+            "unit": unit_value,
             "real_world_value": self.real_world_value,
             "traceability": self.traceability.to_dict(),
             "measurement_id": self.measurement_id,
@@ -168,10 +179,17 @@ class MeasurementResult:
         }
     
     def __repr__(self) -> str:
+        unit_str = "Uncalibrated"
+        real_str = "N/A"
+        
+        if self.unit is not None and self.real_world_value is not None:
+            unit_str = self.unit.value
+            real_str = f"{self.real_world_value:.2f}"
+        
         return (
             f"MeasurementResult("
             f"type={self.measurement_type.value}, "
             f"pdf={self.pdf_value:.2f}pt, "
-            f"real={self.real_world_value:.2f}{self.unit.value}, "
+            f"real={real_str}{unit_str}, "
             f"status={self.status})"
         )
