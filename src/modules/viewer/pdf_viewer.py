@@ -16,7 +16,10 @@ Architecture:
 """
 
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional, Tuple, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ..measurement.measurement_session import MeasurementSessionManager
 from PySide6.QtCore import Qt, Signal, QRectF
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -78,6 +81,7 @@ class PDFViewer(QWidget):
         self._viewport: Optional[Viewport] = None
         self._mapper: Optional[CoordinateMapper] = None
         self._measurement_overlay = None
+        self._measurement_tool = None
         self._calibration_tool = None
         self._measurement_session_manager: Optional[MeasurementSessionManager] = None
         
@@ -650,6 +654,7 @@ class PDFViewer(QWidget):
         # Create measurement engine with optional calibration
         from ..measurement import MeasurementEngine, PolylineTool, AreaTool, PerimeterTool
         from ..measurement.measurement_session import MeasurementSessionManager
+        from ..measurement import DistanceTool, MeasurementOverlay
         
         # Use active calibration if available
         calibration = self.get_active_calibration()
@@ -679,6 +684,7 @@ class PDFViewer(QWidget):
             return
         
         from ..measurement import MeasurementEngine, PolylineTool
+        from ..measurement import MeasurementOverlay
         
         calibration = self.get_active_calibration()
         engine = MeasurementEngine(calibration=calibration)
@@ -701,6 +707,7 @@ class PDFViewer(QWidget):
             return
         
         from ..measurement import MeasurementEngine, AreaTool
+        from ..measurement import MeasurementOverlay
         
         calibration = self.get_active_calibration()
         engine = MeasurementEngine(calibration=calibration)
@@ -723,6 +730,7 @@ class PDFViewer(QWidget):
             return
         
         from ..measurement import MeasurementEngine, PerimeterTool
+        from ..measurement import MeasurementOverlay
         
         calibration = self.get_active_calibration()
         engine = MeasurementEngine(calibration=calibration)
@@ -772,6 +780,8 @@ class PDFViewer(QWidget):
     
     def get_last_measurement_result(self):
         """Get the last completed measurement result."""
+        from ..measurement import MeasurementState
+        
         if self._measurement_tool and self._measurement_tool.interaction.state == MeasurementState.COMPLETED:
             return getattr(self._measurement_tool.interaction, "_last_result", None)
         return None
@@ -781,7 +791,7 @@ class PDFViewer(QWidget):
         if self._measurement_tool is None:
             return None
         
-        from ..measurement import MeasurementState
+        from ..measurement import MeasurementState, DistanceTool
         
         # Try to complete based on tool type
         result = None
@@ -913,6 +923,8 @@ class PDFViewer(QWidget):
     
     def mouseMoveEvent(self, event):
         """Handle mouse move events for hover effects."""
+        from ..measurement import MeasurementState, DistanceTool
+        
         if self._measurement_tool and self._measurement_tool.interaction.state == MeasurementState.WAITING_FOR_END:
             # Preview mode - store current mouse position for preview line
             pass
@@ -920,6 +932,8 @@ class PDFViewer(QWidget):
     
     def keyPressEvent(self, event):
         """Handle key press events for canceling measurements."""
+        from ..measurement import MeasurementState, DistanceTool
+        
         if event.key() == Qt.Key.Key_Escape:
             if self._measurement_tool and self._measurement_tool.interaction.state != MeasurementState.IDLE:
                 self.cancel_measurement()
