@@ -7,6 +7,8 @@ from .measurement_models import (
     TraceabilityInfo,
 )
 from .measurement_engine import MeasurementEngine
+from .measurement_record import MeasurementRecord, MeasurementStatus
+from .measurement_session import MeasurementSession, MeasurementSessionManager
 
 # New interactive measurement modules
 from .interaction import (
@@ -14,6 +16,9 @@ from .interaction import (
     SnappedPoint,
     MeasurementInteraction,
     DistanceTool,
+    PolylineTool,
+    AreaTool,
+    PerimeterTool,
 )
 from .snapping import (
     SnapResult,
@@ -43,10 +48,17 @@ __all__ = [
     "MeasurementResult",
     "TraceabilityInfo",
     "MeasurementEngine",
+    "MeasurementRecord",
+    "MeasurementStatus",
+    "MeasurementSession",
+    "MeasurementSessionManager",
     "MeasurementState",
     "SnappedPoint",
     "MeasurementInteraction",
     "DistanceTool",
+    "PolylineTool",
+    "AreaTool",
+    "PerimeterTool",
     "SnapResult",
     "SnappingSystem",
     "OverlayType",

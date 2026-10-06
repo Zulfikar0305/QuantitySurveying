@@ -22,6 +22,16 @@ class MeasurementType(Enum):
     
     def __repr__(self) -> str:
         return self.value
+    
+    @property
+    def is_length(self) -> bool:
+        """Check if this is a length-based measurement."""
+        return self in (MeasurementType.DISTANCE, MeasurementType.POLYLINE_LENGTH, MeasurementType.POLYGON_PERIMETER)
+    
+    @property
+    def is_area(self) -> bool:
+        """Check if this is an area-based measurement."""
+        return self == MeasurementType.POLYGON_AREA
 
 
 @dataclass(frozen=True)

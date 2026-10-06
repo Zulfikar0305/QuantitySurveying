@@ -73,11 +73,13 @@ class PDFViewer(QWidget):
         
         self._doc: Optional[pymupdf.Document] = None
         self._current_page_index: int = 0
+        self._current_pdf_path: Optional[str] = None
         self._renderer = PDFRenderer()
         self._viewport: Optional[Viewport] = None
         self._mapper: Optional[CoordinateMapper] = None
         self._measurement_overlay = None
         self._calibration_tool = None
+        self._measurement_session_manager: Optional[MeasurementSessionManager] = None
         
         self._setup_ui()
         self._apply_styles()
@@ -312,9 +314,14 @@ class PDFViewer(QWidget):
             
             # Reset state
             self._current_page_index = 0
+            self._current_pdf_path = filepath
             
             # Reset calibration when opening new PDF
             self._calibration_tool = None
+            
+            # Reset measurement session for new document
+            if self._measurement_session_manager is not None:
+                self._measurement_session_manager.remove_session(self._current_pdf_path)
             
             # Update UI
             self._update_page_controls()
@@ -332,9 +339,12 @@ class PDFViewer(QWidget):
             self._doc.close()
             self._doc = None
             self._current_page_index = 0
+            self._current_pdf_path = None
             self._viewport = None
             self._mapper = None
             self._calibration_tool = None
+            self._measurement_tool = None
+            self._measurement_overlay = None
             self._image_label.clear()
             self._update_page_labels()
     
@@ -638,7 +648,8 @@ class PDFViewer(QWidget):
             return
         
         # Create measurement engine with optional calibration
-        from ..measurement import MeasurementEngine
+        from ..measurement import MeasurementEngine, PolylineTool, AreaTool, PerimeterTool
+        from ..measurement.measurement_session import MeasurementSessionManager
         
         # Use active calibration if available
         calibration = self.get_active_calibration()
@@ -651,6 +662,76 @@ class PDFViewer(QWidget):
         )
         
         # Get geometry for snapping
+        if self._current_page_geometry:
+            vector_elements = self._current_page_geometry.vector_elements
+            polyline_elements = self._current_page_geometry.get_polylines()
+            self._measurement_tool.set_geometry(vector_elements, polyline_elements)
+        
+        self._measurement_overlay = MeasurementOverlay(self._mapper)
+        
+        # Initialize session manager for measurement persistence
+        if not hasattr(self, '_measurement_session_manager'):
+            self._measurement_session_manager = MeasurementSessionManager()
+    
+    def activate_polyline_tool(self):
+        """Activate the polyline distance measurement tool."""
+        if self._mapper is None or self._doc is None:
+            return
+        
+        from ..measurement import MeasurementEngine, PolylineTool
+        
+        calibration = self.get_active_calibration()
+        engine = MeasurementEngine(calibration=calibration)
+        
+        self._measurement_tool = PolylineTool(
+            coordinate_mapper=self._mapper,
+            measurement_engine=engine
+        )
+        
+        if self._current_page_geometry:
+            vector_elements = self._current_page_geometry.vector_elements
+            polyline_elements = self._current_page_geometry.get_polylines()
+            self._measurement_tool.set_geometry(vector_elements, polyline_elements)
+        
+        self._measurement_overlay = MeasurementOverlay(self._mapper)
+    
+    def activate_area_tool(self):
+        """Activate the polygon area measurement tool."""
+        if self._mapper is None or self._doc is None:
+            return
+        
+        from ..measurement import MeasurementEngine, AreaTool
+        
+        calibration = self.get_active_calibration()
+        engine = MeasurementEngine(calibration=calibration)
+        
+        self._measurement_tool = AreaTool(
+            coordinate_mapper=self._mapper,
+            measurement_engine=engine
+        )
+        
+        if self._current_page_geometry:
+            vector_elements = self._current_page_geometry.vector_elements
+            polyline_elements = self._current_page_geometry.get_polylines()
+            self._measurement_tool.set_geometry(vector_elements, polyline_elements)
+        
+        self._measurement_overlay = MeasurementOverlay(self._mapper)
+    
+    def activate_perimeter_tool(self):
+        """Activate the polygon perimeter measurement tool."""
+        if self._mapper is None or self._doc is None:
+            return
+        
+        from ..measurement import MeasurementEngine, PerimeterTool
+        
+        calibration = self.get_active_calibration()
+        engine = MeasurementEngine(calibration=calibration)
+        
+        self._measurement_tool = PerimeterTool(
+            coordinate_mapper=self._mapper,
+            measurement_engine=engine
+        )
+        
         if self._current_page_geometry:
             vector_elements = self._current_page_geometry.vector_elements
             polyline_elements = self._current_page_geometry.get_polylines()
@@ -694,6 +775,67 @@ class PDFViewer(QWidget):
         if self._measurement_tool and self._measurement_tool.interaction.state == MeasurementState.COMPLETED:
             return getattr(self._measurement_tool.interaction, "_last_result", None)
         return None
+    
+    def complete_current_measurement(self):
+        """Complete the current measurement and save to session."""
+        if self._measurement_tool is None:
+            return None
+        
+        from ..measurement import MeasurementState
+        
+        # Try to complete based on tool type
+        result = None
+        
+        # Check if it's a PolylineTool, AreaTool, or PerimeterTool
+        from ..measurement.interaction import PolylineTool, AreaTool, PerimeterTool
+        
+        if isinstance(self._measurement_tool, (PolylineTool, AreaTool, PerimeterTool)):
+            # For continuous tools, try to complete
+            if hasattr(self._measurement_tool, 'complete'):
+                result = self._measurement_tool.complete()
+        elif isinstance(self._measurement_tool, DistanceTool):
+            # Distance tool completes on second click, check state
+            if self._measurement_tool.interaction.state == MeasurementState.COMPLETED:
+                # Get the last result from the interaction
+                result = getattr(self._measurement_tool.interaction, "_last_result", None)
+        
+        # Save to session if we have a result
+        if result is not None and self._measurement_session_manager is not None:
+            session = self._measurement_session_manager.get_session(self._current_pdf_path or "unknown.pdf")
+            session.add_measurement(
+                result,
+                page_index=self._current_page_index or 0,
+                page_label=None
+            )
+        
+        # Deactivate tool after completion
+        self.deactivate_measurement_tool()
+        
+        return result
+    
+    def get_measurement_records(self, page_index: Optional[int] = None):
+        """Get measurement records, optionally filtered by page."""
+        if self._measurement_session_manager is None:
+            return []
+        
+        session = self._measurement_session_manager.get_session(self._current_pdf_path or "unknown.pdf")
+        return session.get_measurements(page_index)
+    
+    def remove_measurement_record(self, measurement_id: str) -> bool:
+        """Remove a measurement record by ID."""
+        if self._measurement_session_manager is None:
+            return False
+        
+        session = self._measurement_session_manager.get_session(self._current_pdf_path or "unknown.pdf")
+        return session.remove_measurement(measurement_id)
+    
+    def clear_measurements(self):
+        """Clear all measurements for the current document."""
+        if self._measurement_session_manager is None:
+            return
+        
+        session = self._measurement_session_manager.get_session(self._current_pdf_path or "unknown.pdf")
+        session.clear_all()
     
     # Calibration methods
 

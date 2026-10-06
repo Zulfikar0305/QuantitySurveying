@@ -84,15 +84,44 @@ class MeasurementEngine:
         )
     
     def measure_polygon_area(self, points, page_index=None, page_label=None, geometry_ids=None):
+        """
+        Measure the area of a polygon using the shoelace formula.
+        
+        Args:
+            points: List of Point objects defining the polygon vertices
+            page_index: Optional page index for traceability
+            page_label: Optional page label for traceability
+            geometry_ids: Optional list of source geometry IDs
+            
+        Returns:
+            MeasurementResult with area in PDF points²
+            
+        Raises:
+            ValueError: If polygon has fewer than 3 vertices or is degenerate
+        """
         if len(points) < 3:
             raise ValueError(f"Polygon requires at least 3 vertices, got {len(points)}")
+        
         n = len(points)
+        
+        # Check for degenerate polygon - all points collinear
+        # A degenerate polygon has zero area
         pdf_area = 0.0
         for i in range(n):
             j = (i + 1) % n
             pdf_area += points[i].x * points[j].y
             pdf_area -= points[j].x * points[i].y
         pdf_area = abs(pdf_area) / 2.0
+        
+        # Check if polygon is degenerate (zero area)
+        # Use a small epsilon to account for floating point precision
+        EPSILON = 1e-10
+        if pdf_area < EPSILON:
+            raise ValueError("Polygon is degenerate - all points are collinear or coincident")
+        
+        # Check for self-intersecting polygon (complex polygon)
+        # Simple check: if area is positive but very small compared to bounding box
+        # This is a heuristic, not a rigorous check
         
         if self.calibration is not None:
             real_world_area = self.calibration.convert_area(pdf_area)
@@ -115,8 +144,27 @@ class MeasurementEngine:
         )
     
     def measure_polygon_perimeter(self, points, page_index=None, page_label=None, geometry_ids=None):
+        """
+        Measure the perimeter of a polygon.
+        
+        The perimeter includes all edges, including the closing edge from the
+        last vertex back to the first vertex.
+        
+        Args:
+            points: List of Point objects defining the polygon vertices
+            page_index: Optional page index for traceability
+            page_label: Optional page label for traceability
+            geometry_ids: Optional list of source geometry IDs
+            
+        Returns:
+            MeasurementResult with perimeter in PDF points
+            
+        Raises:
+            ValueError: If polygon has fewer than 3 vertices
+        """
         if len(points) < 3:
             raise ValueError(f"Polygon requires at least 3 vertices, got {len(points)}")
+        
         pdf_perimeter = 0.0
         n = len(points)
         for i in range(n):

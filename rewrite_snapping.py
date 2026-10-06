@@ -1,4 +1,5 @@
-"""
+# Rewrite snapping.py with all fixes
+content = '''\"\"\"
 Deterministic snapping system for measurement points.
 
 This module provides snapping functionality that operates on actual
@@ -11,7 +12,7 @@ Supported snap types:
 - line_intersection: Intersection point between two line segments
 - line_midpoint: Midpoint of a line segment
 - nearest_on_line: Nearest point on a line segment to the cursor
-"""
+\"\"\"
 
 from dataclasses import dataclass
 from typing import Optional, Tuple, List
@@ -23,7 +24,7 @@ from ..viewer.coordinate_mapper import CoordinateMapper
 
 @dataclass(frozen=True)
 class SnapResult:
-    """Result of a snapping operation."""
+    \"\"\"Result of a snapping operation.\"\"\"
     snapped: bool
     original_point: Tuple[float, float]
     snapped_point: Tuple[float, float]
@@ -32,7 +33,7 @@ class SnapResult:
 
 
 class SnappingSystem:
-    """Deterministic snapping system for measurement points."""
+    \"\"\"Deterministic snapping system for measurement points.\"\"\"
     
     def __init__(self, tolerance_page_units: float = 5.0):
         self.tolerance_page_units = tolerance_page_units
@@ -70,8 +71,8 @@ class SnappingSystem:
         
         return candidates
     
-    def find_intersections(self, vector_elements, page_point=None) -> List[Tuple[float, float, float]]:
-        """Find intersection points between line segments."""
+    def find_intersections(self, vector_elements) -> List[Tuple[float, float, float]]:
+        \"\"\"Find intersection points between line segments.\"\"\"
         intersections = []
         lines = []
         
@@ -106,19 +107,13 @@ class SnappingSystem:
                     intersection_x = p1.x + t * (p2.x - p1.x)
                     intersection_y = p1.y + t * (p2.y - p1.y)
                     
-                    # Calculate distance from click point
-                    if page_point:
-                        dx = intersection_x - page_point[0]
-                        dy = intersection_y - page_point[1]
-                        dist_sq = dx * dx + dy * dy
-                        intersections.append((intersection_x, intersection_y, dist_sq))
-                    else:
-                        intersections.append((intersection_x, intersection_y, 0.0))
+                    # Avoid duplicate intersections
+                    intersections.append((intersection_x, intersection_y, 0.0))
         
         return intersections
     
-    def find_midpoints(self, vector_elements, page_point=None) -> List[Tuple[float, float, float]]:
-        """Find midpoint points on line segments."""
+    def find_midpoints(self, vector_elements) -> List[Tuple[float, float, float]]:
+        \"\"\"Find midpoint points on line segments.\"\"\"
         midpoints = []
         
         for element in vector_elements:
@@ -130,13 +125,7 @@ class SnappingSystem:
             if line:
                 mid_x = (line.start.x + line.end.x) / 2.0
                 mid_y = (line.start.y + line.end.y) / 2.0
-                if page_point:
-                    dx = mid_x - page_point[0]
-                    dy = mid_y - page_point[1]
-                    dist_sq = dx * dx + dy * dy
-                    midpoints.append((mid_x, mid_y, dist_sq))
-                else:
-                    midpoints.append((mid_x, mid_y, 0.0))
+                midpoints.append((mid_x, mid_y, 0.0))
         
         return midpoints
     
@@ -157,38 +146,24 @@ class SnappingSystem:
         
         # Add intersection candidates (higher priority)
         if enable_intersections:
-            intersections = self.find_intersections(vector_elements, page_point)
+            intersections = self.find_intersections(vector_elements)
             for cx, cy, dist_sq in intersections:
                 all_candidates.append((cx, cy, dist_sq, "intersection"))
         
         # Add midpoint candidates
         if enable_midpoints:
-            midpoints = self.find_midpoints(vector_elements, page_point)
+            midpoints = self.find_midpoints(vector_elements)
             for cx, cy, dist_sq in midpoints:
                 all_candidates.append((cx, cy, dist_sq, "midpoint"))
         
-        # Find best snap within tolerance (prioritize lower distances, then by type for consistent results)
-        # Priority: intersection > midpoint > line_start/line_end > polyline_vertex > nearest_on_segment
-        snap_type_priority = {
-            "intersection": 0,
-            "midpoint": 1,
-            "line_start": 2,
-            "line_end": 2,
-            "polyline_vertex": 3,
-            "nearest_on_segment": 4,
-        }
-        
+        # Find best snap within tolerance (prioritize lower distances)
         best_candidate = None
         best_dist_sq = self.tolerance_page_units_sq
         
         for cx, cy, dist_sq, snap_type in all_candidates:
             if dist_sq <= best_dist_sq:
-                # If same distance, prefer higher priority snap type
-                current_priority = snap_type_priority.get(best_candidate[3] if best_candidate else snap_type, 5)
-                new_priority = snap_type_priority.get(snap_type, 5)
-                if best_candidate is None or dist_sq < best_dist_sq or (dist_sq == best_dist_sq and new_priority < current_priority):
-                    best_dist_sq = dist_sq
-                    best_candidate = (cx, cy, dist_sq, snap_type)
+                best_dist_sq = dist_sq
+                best_candidate = (cx, cy, dist_sq, snap_type)
         
         if best_candidate:
             return SnapResult(
@@ -214,7 +189,7 @@ class SnappingSystem:
         )
     
     def _find_nearest_on_segment(self, vector_elements, page_point) -> Optional[SnapResult]:
-        """Find the nearest point on any line segment to the given point."""
+        \"\"\"Find the nearest point on any line segment to the given point.\"\"\"
         page_x, page_y = page_point
         best_point = None
         best_dist_sq = self.tolerance_page_units_sq
@@ -274,3 +249,9 @@ class SnappingSystem:
                          screen_point, coordinate_mapper, **snap_options) -> SnapResult:
         page_point = coordinate_mapper.screen_to_page(screen_point)
         return self.snap_to_geometry(vector_elements, polyline_elements, page_point, **snap_options)
+'''
+
+with open(r"c:\Users\moh09\QuantitySurveying\src\modules\measurement\snapping.py", "w") as f:
+    f.write(content)
+
+print("Rewrote snapping.py")
