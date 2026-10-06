@@ -77,6 +77,7 @@ class PDFViewer(QWidget):
         self._viewport: Optional[Viewport] = None
         self._mapper: Optional[CoordinateMapper] = None
         self._measurement_overlay = None
+        self._calibration_tool = None
         
         self._setup_ui()
         self._apply_styles()
@@ -312,6 +313,9 @@ class PDFViewer(QWidget):
             # Reset state
             self._current_page_index = 0
             
+            # Reset calibration when opening new PDF
+            self._calibration_tool = None
+            
             # Update UI
             self._update_page_controls()
             self._load_page()
@@ -330,6 +334,7 @@ class PDFViewer(QWidget):
             self._current_page_index = 0
             self._viewport = None
             self._mapper = None
+            self._calibration_tool = None
             self._image_label.clear()
             self._update_page_labels()
     
@@ -635,8 +640,10 @@ class PDFViewer(QWidget):
         # Create measurement engine with optional calibration
         from ..measurement import MeasurementEngine
         
-        # No hardcoded calibration - measurements will be in PDF points (uncalibrated)
-        engine = MeasurementEngine(calibration=None)
+        # Use active calibration if available
+        calibration = self.get_active_calibration()
+        
+        engine = MeasurementEngine(calibration=calibration)
         
         self._measurement_tool = DistanceTool(
             coordinate_mapper=self._mapper,
@@ -667,11 +674,16 @@ class PDFViewer(QWidget):
         return self._measurement_tool.interaction.state.value
     
     def cancel_measurement(self):
-        """Cancel current measurement."""
+        """Cancel current measurement or calibration."""
         if self._measurement_tool:
             self._measurement_tool.cancel()
         if self._measurement_overlay:
             self._measurement_overlay.clear()
+        if self._calibration_tool:
+            # Restore previous calibration if cancelled
+            previous_calibration = self._calibration_tool.cancel()
+            # Don't update measurement engine here - it's done on next activate
+            self._calibration_tool = None
     
     def get_measurement_overlays(self):
         """Get the current measurement overlay."""
@@ -683,15 +695,61 @@ class PDFViewer(QWidget):
             return getattr(self._measurement_tool.interaction, "_last_result", None)
         return None
     
-        # Mouse event handlers
+    # Calibration methods
+
+    def activate_calibration_tool(self):
+        """Activate the calibration tool."""
+        if self._mapper is None or self._doc is None:
+            return
+
+        # Get existing calibration if any
+        existing_calibration = None
+        if self._calibration_tool:
+            existing_calibration = self._calibration_tool.get_calibration()
+
+        # Create calibration tool
+        from ..measurement import CalibrationTool
+        self._calibration_tool = CalibrationTool(coordinate_mapper=self._mapper)
+        self._calibration_tool.activate(previous_calibration=existing_calibration)
+
+    def clear_calibration(self):
+        """Clear the active calibration."""
+        self._calibration_tool = None
+
+    def is_calibration_active(self) -> bool:
+        """Check if calibration tool is active."""
+        return self._calibration_tool is not None
+
+    def get_calibration_status_message(self) -> str:
+        """Get calibration status message."""
+        if self._calibration_tool is None:
+            return "No calibration active"
+        return self._calibration_tool.get_status_message()
+
+    def get_active_calibration(self):
+        """Get the active calibration if available."""
+        if self._calibration_tool:
+            return self._calibration_tool.get_calibration()
+        return None
+
+    # Mouse event handlers
     
     def mousePressEvent(self, event):
-        """Handle mouse press events for measurement."""
+        """Handle mouse press events for measurement and calibration."""
         if event.button() == Qt.MouseButton.LeftButton:
+            screen_x = event.position().x()
+            screen_y = event.position().y()
+            
+            # Try calibration tool first (it has priority)
+            if self._calibration_tool:
+                success, message = self._calibration_tool.handle_click(screen_x, screen_y)
+                if success:
+                    # Trigger repaint to show any overlays
+                    self.update()
+                return  # Don't process as measurement click
+            
+            # Then handle measurement tool
             if self._measurement_tool:
-                screen_x = event.position().x()
-                screen_y = event.position().y()
-                
                 # Get result if measurement completed
                 result = self._measurement_tool.handle_click(screen_x, screen_y)
                 
@@ -708,7 +766,7 @@ class PDFViewer(QWidget):
                 
                 # Trigger repaint to show overlays
                 self.update()
-        
+
         super().mousePressEvent(event)
     
     def mouseMoveEvent(self, event):

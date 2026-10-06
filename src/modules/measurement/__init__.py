@@ -24,6 +24,16 @@ from .overlays import (
     OverlayItem,
     MeasurementOverlay,
 )
+from .calibration_interaction import (
+    CalibrationState,
+    CalibratedPoint,
+    CalibrationInteraction,
+    CalibrationTool,
+)
+from .calibration_ui import (
+    CalibrationPanel,
+    CalibrationDialog,
+)
 
 __all__ = [
     "Calibration",
@@ -42,4 +52,10 @@ __all__ = [
     "OverlayType",
     "OverlayItem",
     "MeasurementOverlay",
+    "CalibrationState",
+    "CalibratedPoint",
+    "CalibrationInteraction",
+    "CalibrationTool",
+    "CalibrationPanel",
+    "CalibrationDialog",
 ]

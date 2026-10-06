@@ -1,9 +1,9 @@
-from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QPushButton, QHBoxLayout, QLabel
+from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QPushButton, QHBoxLayout, QLabel, QInputDialog
 from PySide6.QtCore import Qt
 
 # Import the PDF viewer
 from src.modules.viewer import PDFViewer
-from src.modules.measurement import Calibration, Unit, UnitSystem
+from src.modules.measurement import Calibration, Unit, UnitSystem, CalibrationTool
 from src.modules.pdf_processing import PdfProcessor
 
 
@@ -57,6 +57,11 @@ class MainWindow(QMainWindow):
         self.distance_button.setStyleSheet("background-color: #4CAF50; color: white;")
         layout.addWidget(self.distance_button)
         
+        self.calibrate_button = QPushButton("Calibrate")
+        self.calibrate_button.clicked.connect(self._on_calibrate)
+        self.calibrate_button.setStyleSheet("background-color: #2196F3; color: white;")
+        layout.addWidget(self.calibrate_button)
+        
         self.cancel_button = QPushButton("Cancel")
         self.cancel_button.clicked.connect(self._on_cancel_measurement)
         self.cancel_button.setEnabled(False)
@@ -104,11 +109,24 @@ class MainWindow(QMainWindow):
         self.status_label.setText("Distance tool active - Click two points to measure")
     
     def _on_cancel_measurement(self):
-        """Cancel current measurement."""
+        """Cancel current measurement or calibration."""
         self.pdf_viewer.cancel_measurement()
         self.distance_button.setStyleSheet("background-color: #4CAF50; color: white;")
+        self.calibrate_button.setStyleSheet("background-color: #2196F3; color: white;")
         self.cancel_button.setEnabled(False)
         self.status_label.setText("Measurement cancelled")
+    
+    def _on_calibrate(self):
+        """Activate calibration tool."""
+        if not self.pdf_viewer.doc:
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "No Document", "Please open a PDF first")
+            return
+        
+        self.pdf_viewer.activate_calibration_tool()
+        self.calibrate_button.setStyleSheet("background-color: #1976D2; color: white;")
+        self.cancel_button.setEnabled(True)
+        self.status_label.setText("Calibration tool active - Click two reference points")
 
 
 if __name__ == '__main__':
