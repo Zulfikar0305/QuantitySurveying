@@ -70,10 +70,13 @@ class PDFViewer(QWidget):
     page_changed = Signal(int)
     zoom_changed = Signal(float)
     file_loaded = Signal(str)
+    measurement_changed = Signal()
     
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
-        
+
+        from ..measurement.measurement_session import MeasurementSessionManager
+
         self._doc: Optional[pymupdf.Document] = None
         self._current_page_index: int = 0
         self._current_pdf_path: Optional[str] = None
@@ -83,8 +86,17 @@ class PDFViewer(QWidget):
         self._measurement_overlay = None
         self._measurement_tool = None
         self._calibration_tool = None
-        self._measurement_session_manager: Optional[MeasurementSessionManager] = None
-        
+        self._measurement_session_manager: Optional[MeasurementSessionManager] = MeasurementSessionManager()
+        self._current_page_geometry = None
+        self._selected_measurement_id: Optional[str] = None
+        self._snap_settings = {
+            "endpoint": True,
+            "vertex": True,
+            "intersection": True,
+            "midpoint": True,
+            "nearest": True,
+        }
+
         self._setup_ui()
         self._apply_styles()
     
@@ -112,6 +124,13 @@ class PDFViewer(QWidget):
         self._image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._image_label.setStyleSheet("background-color: #f0f0f0;")
         self._image_label.setMinimumSize(100, 100)
+        self._image_label.setMouseTracking(True)
+        
+        # The visible PDF content is actually in the scroll area's viewport / image_label.
+        # Forward mouse events from those child widgets to the PDFViewer so measurement
+        # tools receive real clicks instead of the child widgets swallowing them.
+        self._image_label.installEventFilter(self)
+        self._scroll_area.viewport().installEventFilter(self)
         
         self._scroll_area.setWidget(self._image_label)
         viewer_layout.addWidget(self._scroll_area)
@@ -673,10 +692,6 @@ class PDFViewer(QWidget):
             self._measurement_tool.set_geometry(vector_elements, polyline_elements)
         
         self._measurement_overlay = MeasurementOverlay(self._mapper)
-        
-        # Initialize session manager for measurement persistence
-        if not hasattr(self, '_measurement_session_manager'):
-            self._measurement_session_manager = MeasurementSessionManager()
     
     def activate_polyline_tool(self):
         """Activate the polyline distance measurement tool."""
@@ -756,12 +771,54 @@ class PDFViewer(QWidget):
         """Check if measurement tool is active."""
         return self._measurement_tool is not None
     
+    def set_measurement_session_manager(self, manager):
+        """Set the measurement session manager for the current document."""
+        self._measurement_session_manager = manager
+
+    def update_snap_settings(self, endpoint: bool = True, vertex: bool = True,
+                            intersection: bool = True, midpoint: bool = True,
+                            nearest: bool = True):
+        """Update the current snapping options used by the active tool."""
+        self._snap_settings = {
+            "endpoint": endpoint,
+            "vertex": vertex,
+            "intersection": intersection,
+            "midpoint": midpoint,
+            "nearest": nearest,
+        }
+
+        if self._measurement_tool is not None and hasattr(self._measurement_tool, "snapping_system"):
+            self._measurement_tool.snapping_system = getattr(self._measurement_tool, "snapping_system", None)
+
     def get_measurement_state(self) -> Optional[str]:
         """Get current measurement state."""
         if self._measurement_tool is None:
             return None
         return self._measurement_tool.interaction.state.value
-    
+
+    def select_measurement(self, measurement_id: str):
+        """Select a measurement and keep the selection for the UI."""
+        self._selected_measurement_id = measurement_id
+        return measurement_id
+
+    def remove_measurement(self, measurement_id: str) -> bool:
+        """Remove a measurement record by ID from the current session."""
+        if self._measurement_session_manager is None:
+            return False
+        session = self._measurement_session_manager.get_session(self._current_pdf_path or "unknown.pdf")
+        removed = session.remove_measurement(measurement_id)
+        if removed:
+            self.measurement_changed.emit()
+        return removed
+
+    def clear_measurements(self):
+        """Clear measurement records for the current document."""
+        if self._measurement_session_manager is None:
+            return
+        session = self._measurement_session_manager.get_session(self._current_pdf_path or "unknown.pdf")
+        session.clear_all()
+        self.measurement_changed.emit()
+
     def cancel_measurement(self):
         """Cancel current measurement or calibration."""
         if self._measurement_tool:
@@ -790,26 +847,19 @@ class PDFViewer(QWidget):
         """Complete the current measurement and save to session."""
         if self._measurement_tool is None:
             return None
-        
+
         from ..measurement import MeasurementState, DistanceTool
-        
-        # Try to complete based on tool type
+
         result = None
-        
-        # Check if it's a PolylineTool, AreaTool, or PerimeterTool
         from ..measurement.interaction import PolylineTool, AreaTool, PerimeterTool
-        
+
         if isinstance(self._measurement_tool, (PolylineTool, AreaTool, PerimeterTool)):
-            # For continuous tools, try to complete
             if hasattr(self._measurement_tool, 'complete'):
                 result = self._measurement_tool.complete()
         elif isinstance(self._measurement_tool, DistanceTool):
-            # Distance tool completes on second click, check state
             if self._measurement_tool.interaction.state == MeasurementState.COMPLETED:
-                # Get the last result from the interaction
                 result = getattr(self._measurement_tool.interaction, "_last_result", None)
-        
-        # Save to session if we have a result
+
         if result is not None and self._measurement_session_manager is not None:
             session = self._measurement_session_manager.get_session(self._current_pdf_path or "unknown.pdf")
             session.add_measurement(
@@ -817,10 +867,10 @@ class PDFViewer(QWidget):
                 page_index=self._current_page_index or 0,
                 page_label=None
             )
-        
-        # Deactivate tool after completion
+            self.measurement_changed.emit()
+
         self.deactivate_measurement_tool()
-        
+
         return result
     
     def get_measurement_records(self, page_index: Optional[int] = None):
@@ -902,19 +952,29 @@ class PDFViewer(QWidget):
             
             # Then handle measurement tool
             if self._measurement_tool:
+                from ..measurement import MeasurementState
+
                 # Get result if measurement completed
                 result = self._measurement_tool.handle_click(screen_x, screen_y)
                 
-                if result:
-                    # Store last result for retrieval
-                    self._measurement_tool.interaction._last_result = result
-                    
-                    # Update overlay
-                    if self._measurement_overlay:
-                        start_point = self._measurement_tool.interaction.start_point
-                        # We need to track the end point
-                        # For now, just clear and show the completed measurement
+                # Update overlay based on measurement state
+                if self._measurement_overlay:
+                    if result:
+                        # Measurement completed - show the result
                         self._measurement_overlay.clear()
+                        start_point = self._measurement_tool.interaction.start_point
+                        # The end point is stored in the interaction's snapped_points
+                        if len(self._measurement_tool.interaction.snapped_points) >= 2:
+                            end_point = self._measurement_tool.interaction.snapped_points[-1]
+                            self._measurement_overlay.add_start_point(start_point)
+                            self._measurement_overlay.add_end_point(end_point)
+                            self._measurement_overlay.add_measurement_line(start_point, end_point)
+                    elif self._measurement_tool.interaction.state == MeasurementState.WAITING_FOR_END:
+                        # First click - show start point
+                        start_point = self._measurement_tool.interaction.start_point
+                        if start_point:
+                            self._measurement_overlay.clear()
+                            self._measurement_overlay.add_start_point(start_point)
                 
                 # Trigger repaint to show overlays
                 self.update()
@@ -941,7 +1001,43 @@ class PDFViewer(QWidget):
                 return
         super().keyPressEvent(event)
     
-        # Coordinate mapping helper methods
+    def eventFilter(self, obj, event):
+        """Forward child-widget mouse events to PDFViewer using the correct local coordinates."""
+        if obj in (self._image_label, self._scroll_area.viewport()):
+            if event.type() == event.Type.MouseButtonPress:
+                if event.button() == Qt.MouseButton.LeftButton:
+                    from PySide6.QtGui import QMouseEvent
+                    from PySide6.QtCore import QPointF
+
+                    viewer_pos = obj.mapTo(self, event.position().toPoint())
+                    new_event = QMouseEvent(
+                        event.type(),
+                        QPointF(viewer_pos),
+                        event.globalPosition(),
+                        event.button(),
+                        event.buttons(),
+                        event.modifiers(),
+                    )
+                    self.mousePressEvent(new_event)
+                    return True
+            elif event.type() == event.Type.MouseMove:
+                from PySide6.QtGui import QMouseEvent
+                from PySide6.QtCore import QPointF
+
+                viewer_pos = obj.mapTo(self, event.position().toPoint())
+                new_event = QMouseEvent(
+                    event.type(),
+                    QPointF(viewer_pos),
+                    event.globalPosition(),
+                    Qt.MouseButton.NoButton,
+                    event.buttons(),
+                    event.modifiers(),
+                )
+                self.mouseMoveEvent(new_event)
+                return True
+        return super().eventFilter(obj, event)
+
+    # Coordinate mapping helper methods
     
     def page_to_screen(self, page_x: float, page_y: float) -> Tuple[float, float]:
         """

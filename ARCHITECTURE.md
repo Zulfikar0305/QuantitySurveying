@@ -1,223 +1,99 @@
 # Architecture Overview
 
-## Core Principles
+## Product goal
 
-1. Modular architecture
-2. Deterministic geometry processing
-3. Local-only operation
-4. Clear separation of concerns
-5. Explicit verification
+This repository is a local Windows desktop quantity surveying measurement application built around deterministic PDF geometry and explicit scale calibration. The product is not AI-dependent and does not build its measurement logic around external services.
 
-## Technology Stack
+## Core architecture
 
-- PySide6 for UI
-- PyMuPDF for PDF processing
-- SQLite for persistence
-- Pytest for testing
+### 1. PDF processing layer
 
-## Modules
+The PDF processing stack lives under [src/modules/pdf_processing](src/modules/pdf_processing) and is responsible for safely opening files and extracting page geometry.
 
-### 1. PDF Processing (src/modules/pdf_processing/)
+Key modules:
+- [src/modules/pdf_processing/geometry_models.py](src/modules/pdf_processing/geometry_models.py): point, rectangle, segment and polyline models
+- [src/modules/pdf_processing/pdf_processor.py](src/modules/pdf_processing/pdf_processor.py): document loading and extraction pipeline
 
-Handles PDF ingestion and vector geometry extraction.
+The important design rule is that raw PDF geometry stays authoritative. Rendering is visual only; measurements are derived from geometry and coordinate mapping rather than from image pixels.
 
-Key components:
-- geometry_models.py: Domain models for PDF content (Point, Rectangle, LineSegment, Polyline, Curve, TextElement, DrawingElement, PageGeometry, PdfDocument)
-- pdf_processor.py: Main PdfProcessor class for opening and extracting PDF data
-- __init__.py: Module exports
+### 2. Viewer and coordinate system layer
 
-Features:
-- Opens PDF files safely with error handling
-- Extracts page metadata (size, rotation, media/crop boxes)
-- Extracts vector geometry (lines, rectangles, paths, curves)
-- Extracts text elements with positions and formatting
-- Preserves PDF-native coordinates (not converted to pixels)
-- Isolates PyMuPDF implementation details
+The viewer layer under [src/modules/viewer](src/modules/viewer) is responsible for page rendering, zoom, pan, fit-to-page, cursor mapping and measurement interaction.
 
-### 2. Measurement (src/modules/measurement/)
+Core modules:
+- [src/modules/viewer/viewport.py](src/modules/viewer/viewport.py): explicit viewport state model
+- [src/modules/viewer/coordinate_mapper.py](src/modules/viewer/coordinate_mapper.py): page/screen transform logic
+- [src/modules/viewer/rendering.py](src/modules/viewer/rendering.py): PDF page rendering pipeline
+- [src/modules/viewer/pdf_viewer.py](src/modules/viewer/pdf_viewer.py): Qt-based workflow widget
 
-Handles geometric measurements with explicit scale calibration.
+This layer keeps the coordinate system centralized so the UI does not duplicate conversions or invent a second geometry model.
 
-Key components:
-- calibration.py: Calibration model with scale factors and unit conversion
-- measurement_models.py: Measurement result and traceability models
-- measurement_engine.py: Measurement operations (distance, polyline, polygon)
-- interaction.py: Interactive measurement workflow and state machine
-- snapping.py: Deterministic snapping to PDF geometry
-- overlays.py: Visual overlay rendering
-- __init__.py: Module exports
+### 3. Measurement and calibration layer
 
-Features:
-- Explicit scale calibration from known reference measurements
-- No implicit scale assumptions (e.g., no hardcoded 1:100)
-- Deterministic geometric calculations (Euclidean distance, shoelace formula)
-- Full traceability: every measurement includes source information
-- Support for multiple real-world units (mm, cm, m)
-- Interactive point-to-point distance measurement
-- Screen-to-page coordinate mapping
-- Deterministic snapping to line endpoints and polyline vertices
-- Page-specific measurements
+The deterministic measurement stack is under [src/modules/measurement](src/modules/measurement).
 
-Architecture flow:
-```
-User click (screen coordinates)
-    ?
-CoordinateMapper.screen_to_page()
-    ?
-Page coordinates (MuPDF system)
-    ?
-Deterministic Snapping (if enabled)
-    ?
-MeasurementEngine with Calibration
-    ?
-PDF-space measurement (points)
-    ?
-Unit conversion via Calibration
-    ?
-Real-world measurement with traceability
-```
+Core modules:
+- [src/modules/measurement/calibration.py](src/modules/measurement/calibration.py): explicit scale calibration and unit conversion
+- [src/modules/measurement/measurement_engine.py](src/modules/measurement/measurement_engine.py): distance, polyline, area and perimeter calculation logic
+- [src/modules/measurement/interaction.py](src/modules/measurement/interaction.py): tool state and measurement interaction flow
+- [src/modules/measurement/snapping.py](src/modules/measurement/snapping.py): deterministic snap candidates and target selection
+- [src/modules/measurement/measurement_models.py](src/modules/measurement/measurement_models.py): measurement result and traceability objects
+- [src/modules/measurement/measurement_session.py](src/modules/measurement/measurement_session.py): session storage per PDF
 
-Interactive Measurement Workflow:
-1. User activates Distance tool
-2. Viewer enters measurement mode
-3. User clicks Point A - screen coordinates ? page coordinates ? snap
-4. User clicks Point B - screen coordinates ? page coordinates ? snap
-5. MeasurementEngine calculates PDF-space distance
-6. Calibration converts to real-world units
-7. Overlay displays measurement on PDF
-8. MeasurementResult created with full traceability
+This is the most important domain surface in the project. The measurement logic is deterministic and remains independent from AI or external interpretation.
 
-Architecture flow:
-```
-PDF geometry (Point, Polyline, Polygon)
-    ↓
-MeasurementEngine with Calibration
-    ↓
-PDF-space measurement (points or points²)
-    ↓
-Unit conversion via Calibration
-    ↓
-Real-world measurement with traceability
-```
+### 4. Desktop application shell
 
-Key principles:
-- PDF measurements use the coordinate system from pdf_processing module
-- Real-world units are explicit and must be specified via Calibration
-- Area conversions use squared calibration factor
-- All calculations are deterministic and reproducible
-- Measurement results preserve source page, geometry, and calculation method
+The application shell is centered in [src/main.py](src/main.py). It is structured as a drawing-first workspace with:
 
-### 3. PDF Viewer (src/modules/viewer/)
+- top application toolbar for project and viewer controls
+- left tool rail for measurement/calibration selection and snapping toggles
+- central PDF canvas as the primary workspace
+- right measurement list panel
+- status bar for page, zoom and calibration state
 
-Handles PDF page rendering and coordinate mapping.
+### 5. Local project and export foundation
 
-Key components:
-- viewport.py: Viewport state model (zoom, pan, rotation, dimensions)
-- coordinate_mapper.py: Bidirectional coordinate transformation
-- rendering.py: PDF rendering to images using PyMuPDF
-- pdf_viewer.py: PySide6 viewer widget with measurement support
-- __init__.py: Module exports
+The application has started integrating persistent project storage and structured exports:
 
-Features:
-- Open and display PDF files
-- Page navigation (first, previous, next, last)
-- Zoom controls (in, out, reset, fit-to-page)
-- Pan/scroll
-- Coordinate mapping between page and screen spaces
-- Page rotation handling
-- Interactive distance measurement tool
-- Measurement overlay rendering
-- Page-specific measurements
+- [src/modules/project/project_store.py](src/modules/project/project_store.py): SQLite-backed project and measurement persistence
+- [src/modules/export/export_manager.py](src/modules/export/export_manager.py): CSV/JSON export foundation
 
-Measurement Integration in PDF Viewer:
-- activate_distance_tool(): Enables measurement mode
-- handle_click(): Processes clicks for point selection
-- cancel_measurement(): Cancels active measurement
-- get_measurement_overlays(): Retrieves visual overlays
-- set_page_geometry(): Provides geometry for snapping
+These modules are intentionally local and desktop-focused; they are not meant to introduce a backend or cloud dependency.
 
-### 4. Measurement (continued)
+## Data flow
 
-Handles PDF page rendering and coordinate mapping.
+The measurement workflow remains:
 
-Key components:
-- viewport.py: Viewport state model (zoom, pan, rotation, dimensions)
-- coordinate_mapper.py: Bidirectional coordinate transformation
-- rendering.py: PDF rendering to images using PyMuPDF
-- pdf_viewer.py: PySide6 viewer widget
-- __init__.py: Module exports
+1. User clicks inside the PDF viewer
+2. Qt events are routed to the viewer and converted into page coordinates
+3. Snapping selects the best deterministic geometry target
+4. The measurement tool records the points and calls the measurement engine
+5. Calibration is applied if active
+6. The resulting measurement is stored with traceability metadata
+7. The overlay and measurement list are updated from the same underlying model
 
-Features:
-- Open and display PDF files
-- Page navigation (first, previous, next, last)
-- Zoom controls (in, out, reset, fit-to-page)
-- Pan/scroll
-- Coordinate mapping between page and screen spaces
-- Page rotation handling
+This avoids the common bug pattern where the UI appears to have a tool but never reaches the real calculation path.
 
-Architecture flow:
-```
-PDF Document (loaded once)
-    ↓
-PDFRenderer (render pages to images)
-    ↓
-Viewport (track zoom, pan, rotation state)
-    ↓
-CoordinateMapper (transform coordinates bidirectionally)
-    ↓
-PDFViewer Widget (UI with PySide6)
-```
+## Coordinate system
 
-Coordinate System Handling:
-- **PDF page coordinates**: MuPDF coordinate system (top-left origin, X right, Y down, in points)
-- **Screen coordinates**: Widget/pixel coordinates (top-left origin, X right, Y down)
-- Both systems use top-left/downward orientation, so no coordinate flipping is needed
-- Zoom and translation are applied by the viewport
-- Rotation is handled by swapping page dimensions conceptually
+The project uses the PyMuPDF/MuPDF convention directly:
 
-Key principles:
-- Rendered images are visualization only, underlying geometry remains authoritative
-- Coordinate mapping is reversible (round-trip accuracy)
-- Viewport state is explicit and testable
-- Rotation handling is deterministic
+- origin at the top-left of the page
+- X increases right
+- Y increases downward
+- units are in points
 
-### 4. Measurement (continued)
+This is preserved consistently across the viewer, mapper and measurement engine.
 
-Error handling for PDF processing:
-- PdfProcessingError: Base exception class
-- FileNotFoundError: PDF file not found
-- InvalidPdfError: File is not a valid PDF
-- EmptyPdfError: PDF has no pages
-- PermissionError: Access denied to file
+## Product principles
 
-## PDF Coordinate System
-
-PyMuPDF (which wraps MuPDF) uses a coordinate system with the following characteristics:
-
-### PyMuPDF/MuPDF Coordinate System (used internally)
-
-- **Origin (0,0)**: Top-left of the page
-- **X-axis**: Extends to the right
-- **Y-axis**: Extends downward (NOT upward)
-- **Units**: Points (1/72 inch)
-- **A4 page**: 595 x 842 points
-
-This is the coordinate system used by PyMuPDF's `page.rect`, `page.get_drawings()`,
-and all geometry extraction functions.
-
-### PDF Coordinate System (different from MuPDF)
-
-- **Origin (0,0)**: Bottom-left of the page
-- **X-axis**: Extends to the right
-- **Y-axis**: Extends upward
-
-### Transformation Between Spaces
-
-The `page.transformation_matrix` converts from PDF space to MuPDF space:
-- For 0-degree rotation: `Matrix(1, 0, 0, -1, 0, page_height)`
-- This means: `x_mupdf = x_pdf`, `y_mupdf = page_height - y_pdf`
-
-### Rotation Handling
+- geometry remains authoritative
+- calibration is explicit
+- measurements stay traceable
+- local desktop workflow remains the target
+- AI is optional later, not required for core work
+- UI code should orchestrate domain services rather than duplicate calculation logic
 
 - `page.rect`: Returns the page rectangle in MuPDF coordinates
 - `page.rotation`: Returns the page rotation angle (0, 90, 180, 270)

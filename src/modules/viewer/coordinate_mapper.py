@@ -2,6 +2,8 @@
 from typing import Tuple, Union, Optional
 import math
 
+from ..pdf_processing.geometry_models import Point
+
 
 @dataclass(frozen=True)
 class CoordinateMapper:

@@ -35,56 +35,61 @@ class MeasurementRecord:
     """
     
     measurement_id: str
-    """Unique identifier for this measurement record."""
-    
     measurement_type: MeasurementType
-    """The type of measurement that was performed."""
-    
     page_index: int
-    """Index of the PDF page where the measurement was created."""
-    
     page_label: Optional[str]
-    """Label of the PDF page (e.g., 'Sheet 1')."""
-    
     pdf_file: str
-    """Path to the PDF file containing this measurement."""
-    
     pdf_points: List[Dict[str, float]]
-    """Original PDF-space points that formed the measurement."""
-    
     pdf_value: float
-    """The raw measurement in PDF points (or points² for areas)."""
-    
     calibration_used: Optional[Dict[str, Any]]
-    """Calibration information used (None for uncalibrated measurements)."""
-    
     real_world_value: Optional[float]
-    """The measurement converted to real-world units."""
-    
     unit: Optional[str]
-    """The unit of the real-world value."""
-    
     status: MeasurementStatus = MeasurementStatus.VALID
-    """Status of the measurement record."""
-    
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
-    """Timestamp when this record was created."""
-    
     calculation_method: Optional[str] = None
-    """Description of the calculation method used."""
-    
+
+    @classmethod
+    def from_dict(cls, payload: Dict[str, Any]) -> "MeasurementRecord":
+        measurement_type_value = payload.get("measurement_type", "distance")
+        if isinstance(measurement_type_value, MeasurementType):
+            measurement_type = measurement_type_value
+        else:
+            measurement_type = MeasurementType(measurement_type_value)
+
+        status_value = payload.get("status", "valid")
+        if isinstance(status_value, MeasurementStatus):
+            status = status_value
+        else:
+            status = MeasurementStatus(status_value)
+
+        return cls(
+            measurement_id=str(payload.get("measurement_id") or payload.get("id") or "000"),
+            measurement_type=measurement_type,
+            page_index=int(payload.get("page_index", 0) or 0),
+            page_label=payload.get("page_label"),
+            pdf_file=str(payload.get("pdf_file") or "unknown.pdf"),
+            pdf_points=payload.get("pdf_points") or [],
+            pdf_value=float(payload.get("pdf_value", 0.0) or 0.0),
+            calibration_used=payload.get("calibration_used"),
+            real_world_value=payload.get("real_world_value"),
+            unit=payload.get("unit"),
+            status=status,
+            created_at=str(payload.get("created_at") or datetime.now().isoformat()),
+            calculation_method=payload.get("calculation_method"),
+        )
+
     @property
     def is_calibrated(self) -> bool:
         """Check if this measurement is calibrated."""
         return self.calibration_used is not None
-    
+
     @property
     def formatted_pdf_value(self) -> str:
         """Format PDF value for display."""
         if self.measurement_type == MeasurementType.POLYGON_AREA:
             return f"{self.pdf_value:.2f} sq pt"
         return f"{self.pdf_value:.2f} pt"
-    
+
     @property
     def formatted_real_value(self) -> str:
         """Format real-world value for display."""
@@ -93,7 +98,7 @@ class MeasurementRecord:
         if self.measurement_type == MeasurementType.POLYGON_AREA:
             return f"{self.real_world_value:.2f} {self.unit}²" if self.unit else "N/A"
         return f"{self.real_world_value:.2f} {self.unit}" if self.unit else "N/A"
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary representation."""
         return {
@@ -111,11 +116,11 @@ class MeasurementRecord:
             "created_at": self.created_at,
             "calculation_method": self.calculation_method,
         }
-    
+
     def __repr__(self) -> str:
         status_str = self.status.value
         type_str = self.measurement_type.value
-        
+
         if self.is_calibrated:
             real_str = f"{self.real_world_value:.2f} {self.unit}"
             return f"Measurement #{self.measurement_id} ({type_str}): {self.pdf_value:.2f} pt → {real_str} [{status_str}]"
